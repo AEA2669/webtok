@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8" />
+<title>WebTok STT — Aviation Speech Recognition</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="page/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div>
+      <h1>WebTok STT <span class="tag">Aviation</span></h1>
+      <div class="small">Multi-engine speech recognition • Aviation post-processing • Raw vs corrected review</div>
+    </div>
+    <div class="topbar-actions">
+      <button id="shortcutsBtn" class="ghost" title="Keyboard shortcuts" aria-label="Keyboard shortcuts">?</button>
+      <button id="themeBtn" class="ghost" aria-label="Toggle dark mode">Dark</button>
+    </div>
+  </header>
+
+  <div id="alertBanner" class="alert" role="alert" hidden></div>
+
+  <div class="grid">
+    <section class="card" aria-labelledby="engineHdr">
+      <h2 id="engineHdr">Engine</h2>
+      <label class="field"><span>Speech engine</span><select id="engineSelect"></select></label>
+      <div id="engineInfo" class="engine-info small"></div>
+      <div id="engineFields" class="fields"></div>
+      <label class="field"><span>Language</span>
+        <select id="langSelect">
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="en-AU">English (Australia)</option>
+          <option value="en-CA">English (Canada)</option>
+          <option value="en-IN">English (India)</option>
+          <option value="es-ES">Spanish (Spain)</option>
+          <option value="es-MX">Spanish (Mexico)</option>
+          <option value="fr-FR">French</option>
+          <option value="de-DE">German</option>
+          <option value="pt-BR">Portuguese (Brazil)</option>
+          <option value="it-IT">Italian</option>
+          <option value="ja-JP">Japanese</option>
+        </select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="rememberKeys"> <span>Remember API keys on this device</span></label>
+      <div class="warn small">Cloud keys are sent directly from this browser. Use restricted or temporary keys; don't use shared production keys.</div>
+    </section>
+
+    <section class="card" aria-labelledby="audioHdr">
+      <h2 id="audioHdr">Audio &amp; recognition</h2>
+      <div class="row">
+        <label class="field grow"><span>Microphone</span><select id="micSelect"><option value="">Default microphone</option></select></label>
+        <button id="refreshMicsBtn" class="ghost" title="Refresh devices" aria-label="Refresh microphone list">&#8635;</button>
+      </div>
+      <label class="field"><span>Input gain <b id="gainVal">1.0×</b></span><input type="range" id="gainRange" min="0.5" max="4" step="0.1" value="1"></label>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" id="nsToggle" checked> <span>Noise suppression</span></label>
+        <label class="toggle"><input type="checkbox" id="ecToggle" checked> <span>Echo cancellation</span></label>
+        <label class="toggle"><input type="checkbox" id="agcToggle" checked> <span>Auto gain</span></label>
+      </div>
+      <label class="field"><span>Voice detection sensitivity <b id="vadVal">6</b></span><input type="range" id="vadRange" min="1" max="10" step="1" value="6"></label>
+      <label class="field"><span>Background voice rejection <b id="gateVal">Off</b></span><input type="range" id="gateRange" min="0" max="10" step="1" value="0"></label>
+      <div class="small">Mutes audio below the red line on the level meter so nearby conversations aren't transcribed. Raise it until only your own voice crosses the line.</div>
+      <label class="field"><span>Vocabulary boost</span>
+        <select id="boostSelect">
+          <option value="off">Off — most literal (recommended)</option>
+          <option value="light">Light</option>
+          <option value="strong">Strong — may insert words that weren't said</option>
+        </select>
+      </label>
+      <div class="toggles">
+        <label class="toggle"><input type="checkbox" id="pttToggle"> <span>Push-to-talk (hold Space)</span></label>
+        <label class="toggle"><input type="checkbox" id="strictMode"> <span>Strict aviation mode</span></label>
+        <label class="toggle"><input type="checkbox" id="autoAccept" checked> <span>Auto-accept</span></label>
+      </div>
+      <label class="field"><span>Auto-accept at confidence ≥ <b id="thresholdVal">85%</b></span><input type="range" id="thresholdRange" min="50" max="99" step="1" value="85"></label>
+    </section>
+  </div>
+
+  <section class="card controls-card">
+    <div class="row wrap-row">
+      <button id="startBtn">Start</button>
+      <button id="stopBtn" disabled>Stop</button>
+      <button id="talkBtn" class="talk" hidden>Hold to talk</button>
+      <label class="button secondary file-btn" id="fileLabel">Transcribe file…<input type="file" id="fileInput" accept="audio/*,video/*" hidden></label>
+      <button id="clearBtn" class="secondary">Clear</button>
+      <div class="spacer"></div>
+      <div class="status-pill" id="statusPill" data-state="idle"><span class="dot"></span><span id="status">Idle</span></div>
+      <div class="vad" id="vadIndicator" title="Voice activity">VOICE</div>
+    </div>
+    <div id="progress" class="progress" hidden>
+      <div class="bar"><span id="progressBar"></span></div>
+      <div id="progressText" class="small"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="viz">
+      <div id="meter" aria-label="Input level"><div id="meter-fill"></div><div id="meter-gate" hidden></div></div>
+      <canvas id="wave" aria-label="Waveform"></canvas>
+    </div>
+    <div id="interim" class="interim" aria-live="polite"></div>
+    <div class="row small meta">
+      <span>Confidence: <b id="confidence">—</b></span>
+      <span>Engine: <b id="activeMode">—</b></span>
+      <span id="pendingCount"></span>
+    </div>
+
+    <div class="preview" id="previewArea" hidden>
+      <div class="box">
+        <h4>Raw (recognizer output)</h4>
+        <div id="rawText"></div>
+      </div>
+      <div class="box">
+        <h4>Corrected (suggested)</h4>
+        <div id="cleanText"></div>
+        <textarea id="editText" rows="2" hidden aria-label="Edit correction"></textarea>
+        <div class="row actions">
+          <button id="acceptBtn" title="Ctrl+Enter">Accept</button>
+          <button id="editBtn" class="ghost">Edit</button>
+          <button id="rejectBtn" class="secondary" title="Esc">Use raw</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="row between">
+      <h2>Transcript <span id="segCount" class="small"></span></h2>
+      <div class="row">
+        <button id="copyBtn" class="ghost">Copy</button>
+        <button id="exportTxt" class="ghost">TXT</button>
+        <button id="exportJson" class="ghost">JSON</button>
+        <button id="exportSrt" class="ghost">SRT</button>
+      </div>
+    </div>
+    <ol id="segments" class="segments"></ol>
+    <details>
+      <summary class="small">Plain text</summary>
+      <textarea id="transcript" readonly placeholder="Accepted text appears here..."></textarea>
+    </details>
+  </section>
+
+  <div class="grid">
+    <section class="card" aria-labelledby="vocabHdr">
+      <div class="row between">
+        <h2 id="vocabHdr">Aviation vocabulary</h2>
+        <button id="resetVocabBtn" class="ghost">Reset defaults</button>
+      </div>
+      <div class="small">One term per line (boosts recognition where supported). <code>heard =&gt; intended</code> adds a correction rule. Lines starting with <code>#</code> are ignored.</div>
+      <textarea id="vocab" rows="10" spellcheck="false"></textarea>
+      <label class="field"><span>Try the corrector</span><input type="text" id="testInput" placeholder="american one two three four cleared runway two seven left"></label>
+      <div id="testOutput" class="test-out"></div>
+    </section>
+
+    <section class="card" aria-labelledby="histHdr">
+      <div class="row between">
+        <h2 id="histHdr">History</h2>
+        <button id="clearHistoryBtn" class="ghost">Clear history</button>
+      </div>
+      <ul id="history" class="history"></ul>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="row between">
+      <h2>Log</h2>
+      <button id="clearLogBtn" class="ghost">Clear log</button>
+    </div>
+    <div id="log" class="log"></div>
+  </section>
+</div>
+
+<dialog id="shortcutsDlg">
+  <h3>Keyboard shortcuts</h3>
+  <ul class="shortcuts">
+    <li><kbd>Space</kbd> Start / stop (hold to talk in push-to-talk mode)</li>
+    <li><kbd>Ctrl</kbd>+<kbd>Enter</kbd> Accept correction</li>
+    <li><kbd>Esc</kbd> Use raw text (or cancel edit)</li>
+    <li><kbd>Ctrl</kbd>+<kbd>S</kbd> Export TXT</li>
+  </ul>
+  <form method="dialog"><button>Close</button></form>
+</dialog>
+
+<script src="page/script.js" defer></script>
+</body>
+</html>
